@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 import sys
+import os
 import binascii
 import hashlib
 class dexUtils:
@@ -11,9 +12,10 @@ class dexUtils:
         return n.to_bytes(length=size,\
         byteorder='little',signed=False)
     
-    #输入是函数名
-    def __init__(self,file_name):
-        self.__file= open(file_name, 'rb+', True)
+    #输入是文件名,mode为打开方式('rb'只读/'rb+'读写)
+    def __init__(self,file_name,mode='rb+'):
+        self.__file_name=file_name
+        self.__file= open(file_name, mode)
         if self.__file == None:
             print('打开文件失败')
             exit(1)
@@ -21,13 +23,13 @@ class dexUtils:
 
     #查看基本信息
     def ReadHeaderAndPrintInfo(self):
+        print(f'=====> {self.__file_name}')
         self.__file.seek(0)
         
         #切割时候要尾部-1
         i= self.__get_hex_from_bytes(self.__content[0:8])
         if i != 0x3533300a786564:
-            print('不是正常dex文件，如果是\
-            ，请尝试修复')
+            print('不是正常dex文件，如果是，请尝试修复')
         i= self.__get_hex_from_bytes(self.__content[8:0xc])
         print(f'checksum--->{hex(i)}')
         i=self.__get_hex_from_bytes(self.__content[0xc:0x20])
@@ -98,17 +100,51 @@ class dexUtils:
         #写入文件
         self.__file.seek(0)
         self.__file.write(self.__content)
-        print('修复成功')
+        print(f'{self.__file_name} 修复成功')
 
 if __name__ == '__main__':
-    if len(sys.argv)==3:
-        op=sys.argv[1]
-        path=sys.argv[2]
-        u=dexUtils(path)
+    if len(sys.argv)!=3:
+        print('参数不正确')
+        print('用法:')
+        print('  打印头部信息: python3 dexutil.py -p xxx.dex')
+        print('  修复单个文件: python3 dexutil.py -f xxx.dex')
+        print('  修复整个文件夹(含子目录): python3 dexutil.py -f 文件夹路径')
+        exit(1)
+    op=sys.argv[1]
+    path=sys.argv[2]
+
+    def handle(file_path):
+        try:
+            #-p只读打开,避免只读文件报错
+            u=dexUtils(file_path, 'rb' if op=='-p' else 'rb+')
+        except OSError as e:
+            print(f'{file_path} 打开文件失败: {e}')
+            return
         if op=='-p':
             u.ReadHeaderAndPrintInfo()
-        if op=='-f':
+        elif op=='-f':
             u.fixIt()
-    else:
+        else:
+            print(f'不支持的选项: {op}')
+
+    if op not in ('-p','-f'):
         print('参数不正确')
+        print('用法:')
+        print('  打印头部信息: python3 dexutil.py -p xxx.dex')
+        print('  修复单个文件: python3 dexutil.py -f xxx.dex')
+        print('  修复整个文件夹(含子目录): python3 dexutil.py -f 文件夹路径')
+        exit(1)
+
+    if os.path.isdir(path):
+        count=0
+        for root,dirs,files in os.walk(path):
+            for name in sorted(files):
+                if name.lower().endswith('.dex'):
+                    handle(os.path.join(root,name))
+                    count+=1
+        print(f'共处理 {count} 个dex文件')
+    elif os.path.isfile(path):
+        handle(path)
+    else:
+        print('文件或文件夹不存在')
         exit(1)
